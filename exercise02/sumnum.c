@@ -42,9 +42,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	/* OpenMP directive */
-#	pragma omp parallel for num_threads(thread_count) reduction(+: sum) collapse(2)
 	/* Primary loop */
 	for(int i = 0; i < num_iterations; i++) {
+#	pragma omp parallel for num_threads(thread_count) reduction(+: sum)
 		for(long long j = start_num; j <= end_num; j++) {
 			sum += j;
 		}
