@@ -29,15 +29,13 @@ compact(const std::vector<uint8_t>& bytemap,
         std::vector<uint8_t>& bitmap,
         unsigned long long highest)
 {
-  unsigned long long byte_idx;
-  unsigned int bit_idx;
-  uint8_t block;
-  unsigned long long i;
 
-#pragma omp parallel for num_threads(THREAD_COUNT)
-  for (byte_idx = 0; byte_idx < bitmap.size(); byte_idx++) {
+# pragma omp parallel for num_threads(THREAD_COUNT)
+  for (unsigned long long byte_idx = 0; byte_idx < bitmap.size(); byte_idx++) {
+    uint8_t block;
+    unsigned long long i;
     block = 0; // Prepare a block of 8 0's
-    for (bit_idx = 0; bit_idx < WORD_LENGTH; bit_idx++) {
+    for (unsigned int bit_idx = 0; bit_idx < WORD_LENGTH; bit_idx++) {
       i = byte_idx * WORD_LENGTH + bit_idx;
       if (i <= highest && bytemap[i] == 1) {
         // Turn on the bit corresponding to the number i
@@ -121,13 +119,13 @@ main(int argc, char* argv[])
   sieve(is_prime_bits, highest);
   clock_gettime(CLOCK_MONOTONIC, &now);
   fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
-  std::cout << "Sieve completed. " << std::endl 
+  std::cout << "Sieve completed. " << std::endl
             << "Elapsed time: " << (fnow - fstart) << std::endl;
 
 #if COUNT_PRIMES
   // Stage two: count all primes and list the top three.
 #pragma omp parallel for num_threads(THREAD_COUNT) reduction(+ : prime_count)
-  for (unsigned long long i = 0; i <= highest; i++) {
+  for (unsigned long long i = 2; i <= highest; i++) {
     if (read_bit(is_prime_bits, i)) {
       prime_count++;
     }
@@ -138,7 +136,7 @@ main(int argc, char* argv[])
   prime_count = 0;
   prime_list.clear();
   unsigned long long i = highest;
-  while (prime_count < 3) {
+  while (prime_count < 3 && i > 0) {
     if (read_bit(is_prime_bits, i)) {
       prime_list.push_back(i);
       prime_count++;
@@ -147,7 +145,7 @@ main(int argc, char* argv[])
   }
   sort(prime_list.begin(), prime_list.end());
   std::cout << "Highest 3 primes: ";
-  for (unsigned int i = 0; i < 3; i++) {
+  for (unsigned int i = 0; i < prime_list.size(); i++) {
     std::cout << prime_list[i] << " ";
   }
   std::cout << std::endl;
