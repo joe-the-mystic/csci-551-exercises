@@ -1,16 +1,17 @@
 INCLUDE_DIRS = 
 LIB_DIRS = 
 CC = gcc
+CXX = g++
 
 CDEFS=
 CFLAGS= -O2 -g -Wall -fopenmp $(INCLUDE_DIRS) $(CDEFS)
-CFLAGS2= -O0 -g -Wall $(INCLUDE_DIRS) $(CDEFS)
+CFLAGS2= -O0 -g -Wall -fopenmp $(INCLUDE_DIRS) $(CDEFS)
 LIBS=
 
-PRODUCT= sumnum 
+PRODUCT= sumnums_omp_simple sumnums_omp find_primes
 
 HFILES= 
-CFILES= sumnum.c 
+CFILES= sumnums_omp_simple.c sumnums_omp.c find_primes.cpp
 
 SRCS= ${HFILES} ${CFILES}
 OBJS= ${CFILES:.c=.o}
@@ -21,6 +22,12 @@ clean:
 	-rm -f *.o *.NEW *~
 	-rm -f ${PRODUCT} ${DERIVED} ${GARBAGE}
 
-sumnum:	sumnum.c
-	$(CC) $(CFLAGS) -fopenmp -o $@ sumnum.c
+sumnums_omp_simple:	sumnums_omp_simple.c
+	$(CC) $(CFLAGS2) -fopenmp -o $@ sumnums_omp_simple.c 
+
+sumnums_omp:	sumnums_omp.c
+	$(CC) $(CFLAGS2) -fopenmp -o $@ sumnums_omp.c
+
+find_primes:	find_primes.cpp
+	$(CXX) $(CFLAGS2) -fopenmp -o $@ find_primes.cpp
 

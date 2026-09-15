@@ -2,12 +2,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define COUNT  (1000)
+#define COUNT  (1000000)
 
 // Note that this is hardcoded to work for just 2 threads below
-// Be very carefult about assuming you can just bump this up to make
-// everythign work for a larger scale (number of workers).
-#define NUM_THREADS (2)
+// Be very careful about assuming you can just bump this up to make
+// everything work for a larger scale (number of workers).
+#define NUM_THREADS (10)
 
 // Note that often the "digit sum" rather than "sum of the digits" is defined as the sum of the digit in each 10's place, but
 // that's not what we want to model here.  E.g., Wikipedia - https://en.wikipedia.org/wiki/Digit_sum
@@ -34,8 +34,8 @@
 typedef struct
 {
     int threadIdx;
-    int start;
-    int end;
+    long long start;
+    long long end;
 } threadParams_t;
 
 
@@ -44,29 +44,31 @@ pthread_t threads[NUM_THREADS];
 threadParams_t threadParams[NUM_THREADS];
 
 // Thread specific globals
-int gsum[NUM_THREADS];
+long long gsum[NUM_THREADS];
 
 void *sumThread(void *threadp)
 {
-    int i, idx, start, end;
+    int i, idx;
+    long long start, end;
     threadParams_t *threadParams = (threadParams_t *)threadp;
 
     start = threadParams->start;
     end = threadParams->end;
     idx = threadParams->threadIdx;
 
-    printf("Thread %d summing range %d to %d\n", idx, start, end);
+    printf("Thread %d summing range %lld to %lld\n", idx, start, end);
 
     for(i=start; i<=end; i++)
     {
         gsum[idx] = gsum[idx] + i;
-        printf("thread idx=%d, gsum=%d\n", idx, gsum[idx]);
+        //printf("thread idx=%d, gsum=%d\n", idx, gsum[idx]);
     }
 }
 
 int main (int argc, char *argv[])
 {
-   int range=COUNT/NUM_THREADS, gsumall=0; int i=0;
+   int range=COUNT/NUM_THREADS, i=0;
+   long long gsumall = 0;
 
    // initialize gsum array to zero
    for(i=0; i<NUM_THREADS; i++)
@@ -77,8 +79,8 @@ int main (int argc, char *argv[])
    for(i=0; i<NUM_THREADS; i++)
    {
       threadParams[i].threadIdx=i;
-      threadParams[i].start=(i*range);
-      threadParams[i].end=((i*range)+range)-1;
+      threadParams[i].start=(i*range + 1);
+      threadParams[i].end=((i*range)+range);
 
       pthread_create(&threads[i], (void *)0, sumThread, (void *)&(threadParams[i]));
    }
@@ -86,16 +88,17 @@ int main (int argc, char *argv[])
    for(i=0; i<NUM_THREADS; i++)
      pthread_join(threads[i], NULL);
 
-   // we add int COUNT here in the final reduction since each worker
+   // We add int COUNT here in the final reduction since each worker
    // summed up to n-1, so we have to add final value n
    for(i=0; i<NUM_THREADS; i++)
        gsumall+=gsum[i];
 
-   gsumall+=COUNT;
+   printf("TEST COMPLETE:\n");
+   for(i = 0; i < NUM_THREADS; i++)
+      printf("  Sum Thread[%d]=%lld\n", i, gsum[i]);
+   printf("  Sum Total:%lld\n", gsumall);
 
-   printf("TEST COMPLETE: gsum[0]=%d, gsum[1]=%d, gsumall=%d\n", 
-          gsum[0], gsum[1], gsumall);
-
-   // Verfiy that sum of thread indexed sums is (n*(n+1))/2
-   printf("TEST COMPLETE: gsumall=%d, [n[n+1]]/2=%d\n", gsumall, (COUNT*(COUNT+1))/2);
+   // Verify that sum of thread indexed sums is (n*(n+1))/2
+   long long verified_sum = ((long long)COUNT*((long long)COUNT+1))/2;
+   printf("Verify: [n[n+1]]/2=%lld\n", verified_sum);
 }
