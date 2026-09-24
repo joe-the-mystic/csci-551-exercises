@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 int
 main(int argc, char* argv[])
@@ -22,9 +23,16 @@ main(int argc, char* argv[])
   int thread_count = 1;
   int num_iterations = 1;
   long long num_terms = 0;
+  struct timespec now, start;
+  double fnow, fstart;
+
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  fstart = (double)start.tv_sec + (double)start.tv_nsec / 1000000000.0;
+
+
 
   /* Parse args and define vars */
-  if (argc < 2) {
+  if (argc < 3) {
     printf("Usage: sumnums lowest highest --threads thread_count "
            "--iterations num_iterations\n");
     exit(-1);
@@ -80,5 +88,9 @@ main(int argc, char* argv[])
   long long verified_sum = (num_terms) * (2 * lowest + (num_terms - 1)) / 2;
   printf("  Verify: (n*(2a+(n-1))/2 = %lld\n", verified_sum);
 
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+  printf("Time elapsed: %f", fnow - fstart);
+  
   return 0;
 }

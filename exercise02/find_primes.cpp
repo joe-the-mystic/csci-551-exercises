@@ -14,14 +14,12 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
 #include <vector>
 
 #define COUNT_PRIMES true
 #define COMPUTE_PRIME_FACTORS true
 #define WORD_LENGTH 8
-#define THREAD_COUNT 24
+#define THREAD_COUNT 16
 
 /* A function to compact a binary bytemap into a bitmap.*/
 void
