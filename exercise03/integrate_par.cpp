@@ -14,14 +14,16 @@
 #include <mpi.h>
 using namespace std;
 
+// step_size * num_steps = interval
+
 #define DEBUG false
-#define OUTPUT_PRECISION 8 // Scale of 6 to 15 recommended
-#define NUM_STEPS_DEFAULT 10
+#define OUTPUT_PRECISION 15 // Scale of 6 to 15 recommended
+#define NUM_STEPS_DEFAULT 1800000
 
 // Train Problem
-// #define INTERVAL_FROM_ZERO_DEFAULT (1800)
-// #define TSCALE (1800 / (2 * M_PI))
-// #define ASCALE 0.236589076381454
+#define INTERVAL_FROM_ZERO_DEFAULT (1800)
+#define TSCALE (1800 / (2 * M_PI))
+#define ASCALE 0.236589076381454
 
 // Basic interval from 0 to pi
 //#define INTERVAL_FROM_ZERO_DEFAULT (M_PI)
@@ -29,9 +31,9 @@ using namespace std;
 //#define ASCALE 1
 
 // Interval from 0 to 10
-#define INTERVAL_FROM_ZERO_DEFAULT 10
-#define TSCALE 1
-#define ASCALE 1
+// #define INTERVAL_FROM_ZERO_DEFAULT 10
+// #define TSCALE 1
+// #define ASCALE 1
 
 
 // Function Declarations
@@ -95,20 +97,22 @@ main(int argc, char* argv[])
     << " of " << comm_sz << "!" << endl;
   }
 
-  if (my_rank == 0) {
-    cout << "Integrating from " << start << " to " << end << endl
-    << "Number of steps: " << global_n << endl;
-  } 
-
-  /* Set up local sections to be computed in multiprocess. 
-   * If global_n % comm_sz != 0, then leftover steps are assigned to ranks 0..n_rem. */
+  /* Set up local sections to be computed in multiprocess.
+   * If global_n % comm_sz != 0, then leftover steps are assigned to ranks
+   * 0..n_rem-1. */
   base = global_n / comm_sz;
-  n_rem = global_n % comm_sz; // remainder 
+  n_rem = global_n % comm_sz; // remainder
   local_n = base + (my_rank < n_rem ? 1 : 0); // Give an extra step to the first n_rem procs
   first_step = my_rank * base + min(my_rank, n_rem);
   step_size = (end - start) / global_n;
   local_start = start + first_step * step_size;
   local_end = local_start + local_n * step_size;
+
+  if (my_rank == 0) {
+    cout << "Integrating from " << start << " to " << end << endl
+         << "Number of steps: " << global_n << endl
+         << "Step size: " << step_size << endl;
+  }
 
   /* Use a Riemann sum to estimate the definite integral using the area under
    * the curve.
@@ -138,16 +142,16 @@ main(int argc, char* argv[])
 double
 accel(double t)
 {
-  return 10.0;
-  //return (sin(t / TSCALE) * ASCALE); // acceleration
+  // return 10.0;
+  return (sin(t / TSCALE) * ASCALE); // acceleration
 }
 
 /* Velocity function */
 double
 vel(double t)
 {
-  return 10 * t;
-  //return (1.0 - cos(t / TSCALE)) * ASCALE * TSCALE; // velocity
+  // return 10 * t;
+  return (1.0 - cos(t / TSCALE)) * ASCALE * TSCALE; // velocity
 }
 
 /* Position function */
@@ -170,8 +174,10 @@ riemann_sum(
   
   double sum = 0.0;
 
-  cout << "Step size = " << step_size << " for " << nstep << " steps over interval "
-       << start << " to " << end << "." << endl;
+  if (DEBUG) {
+    cout << "Step size = " << step_size << " for " << nstep << " steps over interval "
+         << start << " to " << end << "." << endl;
+  }
 
   for (unsigned int idx = 0; idx < nstep; idx++) {
     double x = 0.0, fx = 0.0;
@@ -185,24 +191,28 @@ riemann_sum(
   return sum;
 }
 
-// /* Computes the trapezoidal sum over the given interval. */
-// double
-// trapezoidal_sum(double start, double end)
-// {
-//   int nstep = lround((end - start) / STEP_SIZE);
-//   double sum = 0.0;
-//   double dx = (end - start) / nstep;
-//
-//   cout << "Step size = " << dx << " for " << nstep
-//   << " steps over interval " << start << " to " << end << "." << endl;
-//
-//   for (int idx = 0; idx < nstep; idx++) {
-//     double x = 0.0;
-//     x = start + (idx * dx);
-//
-//     // Add the area of the trapezoid on the current subinterval.
-//     sum += ( ((integrand(x) + integrand(x+dx)) / 2) * dx );
-//   }
-//
-//   return sum;
-// }
+//* Computes the trapezoidal sum over the given interval. */
+double
+trapezoidal_sum(double (*integrand)(double), 
+  const double &start, 
+  const double &end, 
+  const unsigned int &nstep, 
+  const double &step_size  )
+{
+  double sum = 0.0;
+
+  if (DEBUG){
+    cout << "Step size = " << step_size << " for " << nstep
+    << " steps over interval " << start << " to " << end << "." << endl;
+  }
+
+  for (unsigned int idx = 0; idx < nstep; idx++) {
+    double x = 0.0;
+    x = start + (idx * step_size);
+
+    // Add the area of the trapezoid on the current subinterval.
+    sum += ( ((integrand(x) + integrand(x+step_size)) / 2) * step_size );
+  }
+
+  return sum;
+}

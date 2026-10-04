@@ -4,8 +4,8 @@ MPIXX = mpicxx
 MPIXX_FLAGS = -g -Wall -O0 
 
 
-PRODUCT = integrate_seq integrate_par
-CXXFILES = integrate_seq.cpp integrate_par.cpp
+PRODUCT = integrate_seq integrate_par integrate_par_float
+CXXFILES = integrate_seq.cpp integrate_par.cpp integrate_par_float.cpp
 
 all: ${PRODUCT}
 
@@ -18,3 +18,7 @@ integrate_seq: integrate_seq.cpp
 
 integrate_par: integrate_par.cpp
 	${MPIXX} ${MPIXX_FLAGS} integrate_par.cpp -o integrate_par
+
+integrate_par_float: integrate_par_float.cpp
+	${MPIXX} ${MPIXX_FLAGS} integrate_par_float.cpp -o integrate_par_float
+
