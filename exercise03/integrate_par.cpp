@@ -4,7 +4,7 @@
 // Date: 28 September 2026
 // Description: This project numerically integrates a function over a given
 // interval, using MPI to divide the work in parallel. It was developed at
-// CSU, Chico to practive distributed memory programming. This version uses
+// CSU, Chico to practice distributed memory programming. This version uses
 // a constant step size, and has been modified to work with MPI.
 //////////////////////////////////////////////////////////////////////////////
 #include <algorithm>
@@ -47,6 +47,13 @@ double riemann_sum(
   const unsigned int &nstep, 
   const double &step_size  
 );
+double trapezoidal_sum(
+  double (*integrand)(double), 
+  const double &start, 
+  const double &end, 
+  const unsigned int &nstep, 
+  const double &step_size
+);
 
 
 // MAIN ///////////////////////////////////////////////////////////////////////
@@ -60,6 +67,7 @@ main(int argc, char* argv[])
   double total_int_area = 0.0;
   double (*integrand)(double) = accel; // Function pointer to the integrand
   double (*antiderivative)(double) = vel; // FP to the antiderivative
+  double (*second_antiderivative)(double) = pos; // FP to the second antiderivative
   
   // Set double precision on cout
   cout << std::fixed << std::setprecision(OUTPUT_PRECISION);
@@ -94,7 +102,7 @@ main(int argc, char* argv[])
 
   if (DEBUG) {
     cout << "Hello from process " << my_rank 
-    << " of " << comm_sz << "!" << endl;
+         << " of " << comm_sz << "!" << endl;
   }
 
   /* Set up local sections to be computed in multiprocess.
@@ -109,15 +117,15 @@ main(int argc, char* argv[])
   local_end = local_start + local_n * step_size;
 
   if (my_rank == 0) {
-    cout << "Integrating from " << start << " to " << end << endl
+    cout << "First Integral: Integrating from " << start << " to " << end << endl
          << "Number of steps: " << global_n << endl
          << "Step size: " << step_size << endl;
   }
 
-  /* Use a Riemann sum to estimate the definite integral using the area under
+  /* Use a trapezoidal sum to estimate the definite integral using the area under
    * the curve.
    * First we sum the sub-intervals inside each section to get each process's local sum. */
-  local_int_area = riemann_sum(integrand, local_start, local_end, local_n, step_size);
+  local_int_area = trapezoidal_sum(integrand, local_start, local_end, local_n, step_size);
   if (DEBUG) {
     cout << "Process " << my_rank << " summed from " << local_start << " to " << local_end << ": " << local_int_area << endl;
   }
@@ -126,12 +134,35 @@ main(int argc, char* argv[])
   MPI_Reduce(&local_int_area, &total_int_area, 1, MPI_DOUBLE, MPI_SUM, 0,
          MPI_COMM_WORLD);
   
-  
   if (my_rank == 0) {
-    /* Print Riemann sum and check the numerical integration using the 2nd
+    /* Print trap sum and check the numerical integration using the 2nd
      * fundamental theorem of Calculus. */
-    cout << "Riemann sum: " << total_int_area << endl
+    cout << "First integral: " << total_int_area << endl
          << "Verify by antiderivative: " << antiderivative(end) - antiderivative(start) << endl;
+  }
+
+  if (my_rank == 0) {
+    cout << "Second integral: integrating from " << start << " to " << end << endl
+         << "Number of steps: " << global_n << endl
+         << "Step size: " << step_size << endl;
+  }
+
+  /* Use a trapezoidal sum to estimate the second integral using the area under
+   * the curve of the predefined first antiderivative.
+   * First we sum the sub-intervals inside each section to get each process's local sum. */
+  local_int_area = trapezoidal_sum(antiderivative, local_start, local_end, local_n, step_size);
+  if (DEBUG) {
+    cout << "Process " << my_rank << " summed from " << local_start << " to " << local_end << ": " << local_int_area << endl;
+  }
+
+  /* Next we combine all local sums using MPI reduce. */
+  MPI_Reduce(&local_int_area, &total_int_area, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  if (my_rank == 0) {
+    /* Print trap sum and check the numerical integration using the 2nd
+     * fundamental theorem of Calculus. */
+    cout << "Second integral: " << total_int_area << endl
+         << "Verify by second antiderivative: " << second_antiderivative(end) - second_antiderivative(start) << endl;
   }
 
   /* Shut down MPI */
@@ -159,7 +190,7 @@ double
 pos(double t)
 {
   // return 5 * pow(t, 2);
-  return (-TSCALE * (sin(t / TSCALE) + t)) * ASCALE * TSCALE; // position
+  return (t - TSCALE * (sin(t / TSCALE) )) * ASCALE * TSCALE; // position
 }
 
 /* Computes the middle riemann sum over the given interval */
