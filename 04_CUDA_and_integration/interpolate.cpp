@@ -14,7 +14,7 @@ using namespace std;
 
 #define READ_COLUMN 1
 #define OUTPUT_PRECISION 9
-#define STEPS_PER_UNIT 10000 // Number of steps to be interpolated between each point.
+#define STEPS_PER_UNIT 1000 // Number of steps to be interpolated between each point.
 
 int 
 main(int argc, char* argv[]) {

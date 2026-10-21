@@ -19,7 +19,7 @@
 using namespace std;
 
 #define OUTPUT_PRECISION 9
-#define STEPS_PER_UNIT 10000 // Number of steps per unit on the X-axis
+#define STEPS_PER_UNIT 1000 // Number of steps per unit on the X-axis
 #define DEBUG false
 #define INITIAL_V 0
 #define INITIAL_X 0
