@@ -8,14 +8,15 @@
 // performs a double integration, handling a loop-carried dependency.
 //////////////////////////////////////////////////////////////////////////////
 
+#include "default_profile.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <mpi.h>
 #include <sstream>
 #include <string>
 #include <vector>
-#include "default_profile.h"
 using namespace std;
 
 #define OUTPUT_PRECISION 9
@@ -86,11 +87,42 @@ integrate_vec(
   return sum;
 } // INTEGRATE_VEC //
 
+double
+find_max_v(
+  const vector<double>& lookup_table, 
+  const size_t start_idx, 
+  const size_t end_idx)
+{
+  double sum;
+  double max;
+  double step_size = 1.0 / STEPS_PER_UNIT;
+
+  if (end_idx >= lookup_table.size()) {
+    cerr << "Error: end index " << end_idx << " out of bounds." << endl;
+    return 0;
+  } else if (start_idx >= lookup_table.size()) {
+    cerr << "Error: start index " << start_idx << " out of bounds." << endl;
+    return 0;
+  } else if (start_idx >= end_idx) {
+    return 0;
+  }
+
+  sum = 0.0;
+  max = numeric_limits<double>::min();
+  for (size_t i = start_idx; i < end_idx; i++) {
+    double ffx = (((lookup_table[i] + lookup_table[i + 1]) / 2) * step_size);
+    sum += ffx;
+    if (sum > max) max = sum;
+  }
+
+  return max;
+}
 
 /* Takes in data from a CSV and stores it in a vector. 
  * Returns size of vector. */
 unsigned int
-read_csv_to_vec(const string &fname_in, vector<double> &vec_out) {
+read_csv_to_vec(const string &fname_in, vector<double> &vec_out) 
+{
   ifstream fin;
   if (!vec_out.empty()) vec_out.clear();
 
@@ -123,12 +155,12 @@ main(int argc, char* argv[]) {
   cout << fixed << setprecision(OUTPUT_PRECISION);
 
   // Integration vars
-  double local_initial_v = 0, local_delta_v, local_delta_x;
+  double local_initial_v = 0, local_delta_v, local_delta_x, local_max_v;
   vector<double> acc_table;
   size_t table_size = 0;
   size_t global_num_steps, chunk_size, chunk_residual;
-  size_t global_start_idx = 0, global_end_idx = 0, local_start_idx, local_end_idx;
-  double global_final_v = 0, global_final_x = 0;
+  size_t local_start_idx, local_end_idx;
+  double global_final_v = 0, global_final_x = 0, global_max_v = 0;
 
   // MPI Vars
   int my_rank, comm_sz;
@@ -184,10 +216,8 @@ main(int argc, char* argv[]) {
   acc_table.resize(table_size);
   MPI_Bcast(acc_table.data(), acc_table.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-  // Determine global table attributes.
+  // Determine total number of steps.
   global_num_steps = table_size - 1;
-  global_start_idx = 0;
-  global_end_idx = global_start_idx + global_num_steps;
 
   // Divide up chunks for each process. 
   if (comm_sz > static_cast<int>(global_num_steps)) {
@@ -221,6 +251,9 @@ main(int argc, char* argv[]) {
   // Compute local change in position over the chunk.
   local_delta_x = integrate_vec(acc_table, local_start_idx, local_end_idx, 2, local_initial_v);
 
+  // Compute local maximum velocity
+  local_max_v = find_max_v(acc_table, local_start_idx, local_end_idx);
+
   // Compute final velocity
   MPI_Reduce(&local_delta_v, &global_final_v, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   if (my_rank == 0) global_final_v += INITIAL_V;
@@ -228,6 +261,9 @@ main(int argc, char* argv[]) {
   // Compute final position
   MPI_Reduce(&local_delta_x, &global_final_x, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   if (my_rank == 0) global_final_x += INITIAL_X;
+
+  // Compute global max velocity
+  MPI_Reduce(&local_max_v, &global_max_v, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
   // Check clock time
 #if CLOCK
@@ -242,7 +278,8 @@ main(int argc, char* argv[]) {
   // Print results
   if (my_rank == 0) {
     cout << "Results:\n" << "\tFinal Velocity: " << global_final_v << "\n"
-         << "\tFinal Position: " << global_final_x << endl;
+         << "\tFinal Position: " << global_final_x << "\n"
+         << "\tMaximum Velocity: " << global_max_v << endl;
   }
 
   // Check clock time
