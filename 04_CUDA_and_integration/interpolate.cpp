@@ -90,7 +90,7 @@ main(int argc, char* argv[]) {
     cerr << "Couldn't create file: " << fname_h_out << endl;
     return 1;
   }
-  fhout << "double DefaultProfile[] = {\n\t";
+  fhout << "#include <vector>\n\nstd::vector<long double> global_table = {\n\t";
   for (unsigned int i = 0; i < out_vec.size(); i++) {
     fhout << out_vec[i];
     if (i != out_vec.size() - 1) {

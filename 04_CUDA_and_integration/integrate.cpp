@@ -12,7 +12,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <mpi.h>
 #include <sstream>
 #include <string>
@@ -28,100 +27,31 @@ using namespace std;
 
 // FUNCTIONS //////////////////////////////////////////////////////////////////
 
-/* Integrates a discrete function defined by a vector. */
-double
-integrate_vec(
-  const vector<double> &lookup_table, 
-  const size_t start_idx,
-  const size_t end_idx, 
-  const unsigned int degree = 1, // 1st or 2nd degree integration 
-  const double offset = 0) // Used only for degree 2
+void
+interpolate_slice(
+  const vector<long double> &in_vec, 
+  vector<long double> &out_vec,
+  size_t start_idx, 
+  size_t end_idx)
 {
-  double sum = 0.0;
-  double step_size = 1.0 / STEPS_PER_UNIT;
-  size_t nstep = end_idx - start_idx;
-
-  if (degree == 0 || degree > 2) {
-    cerr << "Error: invalid degree for integration: " << degree << endl;
-    return 0;
-  }
-
-  if (end_idx >= lookup_table.size()) {
-    cerr << "Error: end index " << end_idx << " out of bounds." << endl;
-    return 0;
-  } else if (start_idx >= lookup_table.size()) {
-    cerr << "Error: start index " << start_idx << " out of bounds." << endl;
-    return 0;
-  } else if (start_idx >= end_idx) {
-    return 0;
-  }
-
-  if (DEBUG) {
-    cout << "Step size = " << step_size << " for " << nstep
-         << " steps over interval " << start_idx / STEPS_PER_UNIT << " to "
-         << end_idx / STEPS_PER_UNIT << "." << endl;
-  }
-
-  switch (degree) {
-    case 1: {
-      sum = 0.0;
-      for (size_t i = start_idx; i < end_idx; i++) {
-        double ffx = (((lookup_table[i] + lookup_table[i+1]) / 2) * step_size);
-        sum += ffx;
-      }
-      break;
-    }
-    case 2: {
-      double ffx = offset;
-      sum = 0.0;
-      for (size_t i = start_idx; i < end_idx; i++) {
-        double dffx = ((lookup_table[i] + lookup_table[i+1]) / 2) * step_size;
-        double ffx_next = ffx + dffx;
-        sum += ((ffx + ffx_next) / 2) * step_size;
-        ffx = ffx_next;
-      }
-      break;
+  out_vec.resize(end_idx - start_idx + 1);
+  for (size_t i = start_idx; i <= end_idx; i++) {
+    // i is the global index, seg+j is the slice index
+    size_t seg = i / STEPS_PER_UNIT;
+    size_t j   = i % STEPS_PER_UNIT;
+    if (seg + 1 >= in_vec.size()) {
+      out_vec[i - start_idx] = in_vec.back();
+    } else {
+      long double slope = in_vec[seg + 1] - in_vec[seg];
+      out_vec[i - start_idx] = in_vec[seg] + j * (slope / STEPS_PER_UNIT);
     }
   }
-
-  return sum;
-} // INTEGRATE_VEC //
-
-double
-find_max_v(
-  const vector<double>& lookup_table, 
-  const size_t start_idx, 
-  const size_t end_idx)
-{
-  double sum;
-  double max;
-  double step_size = 1.0 / STEPS_PER_UNIT;
-
-  if (end_idx >= lookup_table.size()) {
-    cerr << "Error: end index " << end_idx << " out of bounds." << endl;
-    return 0;
-  } else if (start_idx >= lookup_table.size()) {
-    cerr << "Error: start index " << start_idx << " out of bounds." << endl;
-    return 0;
-  } else if (start_idx >= end_idx) {
-    return 0;
-  }
-
-  sum = 0.0;
-  max = numeric_limits<double>::min();
-  for (size_t i = start_idx; i < end_idx; i++) {
-    double ffx = (((lookup_table[i] + lookup_table[i + 1]) / 2) * step_size);
-    sum += ffx;
-    if (sum > max) max = sum;
-  }
-
-  return max;
 }
 
 /* Takes in data from a CSV and stores it in a vector. 
  * Returns size of vector. */
 unsigned int
-read_csv_to_vec(const string &fname_in, vector<double> &vec_out) 
+read_csv_to_vec(const string &fname_in, vector<long double> &vec_out) 
 {
   ifstream fin;
   if (!vec_out.empty()) vec_out.clear();
@@ -155,80 +85,66 @@ main(int argc, char* argv[]) {
   cout << fixed << setprecision(OUTPUT_PRECISION);
 
   // Integration vars
-  double local_initial_v = 0, local_delta_v, local_delta_x, local_max_v;
-  vector<double> acc_table;
+  long double local_initial_v = 0, local_delta_v, local_delta_x, local_max_v;
+  vector<long double> acc_table;
   size_t table_size = 0;
-  size_t global_num_steps, chunk_size, chunk_residual;
+  size_t global_num_steps, local_num_steps, chunk_size, chunk_residual;
   size_t local_start_idx, local_end_idx;
-  double global_final_v = 0, global_final_x = 0, global_max_v = 0;
+  long double global_final_v = 0, global_final_x = 0, global_max_v = 0;
+  long double step_size;
 
   // MPI Vars
   int my_rank, comm_sz;
 
   // Initialize clock
 #if CLOCK
-  struct timespec now, start;
-  double fnow, fstart, ffile, finteg;
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  fstart = (double)start.tv_sec + (double)start.tv_nsec / 1000000000.0;
+    struct timespec now, start;
+    double fnow, fstart, finit, finteg;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    fstart = (double)start.tv_sec + (double)start.tv_nsec / 1000000000.0;
 #endif
 
-  // Initialize MPI and get communicator info
-  MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
-  if (DEBUG && my_rank == 0) cout << "Comm size: " << comm_sz << endl;
+// Initialize MPI and get communicator info
+MPI_Init(&argc, &argv);
+MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+if (DEBUG && my_rank == 0) cout << "Comm size: " << comm_sz << endl;
 
+// Check clock time
+#if CLOCK
+  MPI_Barrier(MPI_COMM_WORLD);
   if (my_rank == 0) {
-    if (argc == 1) {
-      table_size = sizeof(DefaultProfile) / sizeof(double);
-      acc_table.assign(DefaultProfile, DefaultProfile + table_size);
-    } else if (argc == 2) {
-      // Rank 0 reads in CSV and stores to vector.
-      string fname_in = argv[1];
-      table_size = (read_csv_to_vec(fname_in, acc_table));
-    }
-  } 
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+    finit = fnow;
+    cout << "Initialization time: " << (finit - fstart) << endl;
+  }
+#endif
+
   if (argc > 2) {
     if (my_rank == 0) 
       cout << "Usage: ./integrate in_file.csv" << endl;
     MPI_Finalize();
     return 1;
   }
-    
-  // Check clock time
-#if CLOCK
-  if (my_rank == 0) {
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
-    ffile = fnow;
-    cout << "File read time: " << (ffile - fstart) << endl;
-  }
-#endif
-  
-  // Broadcast the lookup table to all ranks.
-  MPI_Bcast(&table_size, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
-  if (table_size <= 1) {
-    if (my_rank == 0) cerr << "Error: Invalid table size " << table_size << endl;
-    MPI_Finalize();
-    return -1;
-  } 
-  acc_table.resize(table_size);
-  MPI_Bcast(acc_table.data(), acc_table.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-  // Determine total number of steps.
-  global_num_steps = table_size - 1;
+  if (argc == 2) {
+    // If a file is specified on the command line, get table from file.
+    // Otherwise use the global_table defined in default_profile.h.
+    if (my_rank == 0) {
+      table_size = read_csv_to_vec(argv[1], global_table);
+    }
+    MPI_Bcast(&table_size, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+    global_table.resize(table_size);
+    MPI_Bcast(global_table.data(), table_size, MPI_LONG_DOUBLE, 0, MPI_COMM_WORLD);
+  } 
 
   // Divide up chunks for each process. 
+  global_num_steps = (global_table.size() - 1) * STEPS_PER_UNIT;
   if (comm_sz > static_cast<int>(global_num_steps)) {
-    chunk_size = 1;
-    chunk_residual = 0;
-    // Procs without work end themselves
-    if (my_rank >= static_cast<int>(global_num_steps)) {
-      chunk_size = 0;
-      chunk_residual = 0;
-      return 0;
-    }
+    if (my_rank == 0) cerr << "Table size " << global_num_steps << " smaller than number of processes. Aborting..." << endl;
+    MPI_Finalize();
+    return 1;
   } else {
     chunk_size = global_num_steps / comm_sz;
     chunk_residual = global_num_steps % comm_sz;
@@ -237,41 +153,59 @@ main(int argc, char* argv[]) {
   local_end_idx = (my_rank + 1) * chunk_size;
   // The last process gets the residual.
   if (my_rank == comm_sz - 1) local_end_idx += chunk_residual;
-  
-  // Compute local change in velocity over the chunk
-  local_delta_v = integrate_vec(acc_table, local_start_idx, local_end_idx);
+  local_num_steps = local_end_idx - local_start_idx;
+  step_size = 1.0 / STEPS_PER_UNIT;
 
+  interpolate_slice(global_table, acc_table, local_start_idx, local_end_idx);
+
+  // Compute chunk results
+  // Relative to local initial v:
+  local_delta_v = 0.0;
+  local_delta_x = 0.0;
+  local_max_v = 0.0;
+
+  if (DEBUG) {
+    cout << "Step size = " << step_size << " for " << local_num_steps
+         << " steps over interval " << local_start_idx / STEPS_PER_UNIT << " to "
+         << local_end_idx / STEPS_PER_UNIT << "." << endl;
+  }
+
+  for (size_t i = 0; i < local_num_steps; i++) {
+    long double v_next = local_delta_v + 0.5 * (acc_table[i] + acc_table[i+1]) * step_size;
+    local_delta_x += 0.5 * (local_delta_v + v_next) * step_size;
+    local_delta_v = v_next;
+    if (local_delta_v > local_max_v) local_max_v = local_delta_v;
+  }
+  
   // Get initial velocity for each rank by using Exscan
   // For each rank r, Exscan gets the sum of the values from ranks 0..(r-1).
-  local_initial_v = 0.0;
-  MPI_Exscan(&local_delta_v, &local_initial_v, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Exscan(&local_delta_v, &local_initial_v, 1, MPI_LONG_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   if (my_rank == 0) local_initial_v = 0.0;
   local_initial_v += INITIAL_V;
-  
-  // Compute local change in position over the chunk.
-  local_delta_x = integrate_vec(acc_table, local_start_idx, local_end_idx, 2, local_initial_v);
 
-  // Compute local maximum velocity
-  local_max_v = find_max_v(acc_table, local_start_idx, local_end_idx);
+  // Add offsets
+  local_delta_x += local_initial_v * local_num_steps * step_size;
+  local_max_v += local_initial_v;
 
   // Compute final velocity
-  MPI_Reduce(&local_delta_v, &global_final_v, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&local_delta_v, &global_final_v, 1, MPI_LONG_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   if (my_rank == 0) global_final_v += INITIAL_V;
   
   // Compute final position
-  MPI_Reduce(&local_delta_x, &global_final_x, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&local_delta_x, &global_final_x, 1, MPI_LONG_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   if (my_rank == 0) global_final_x += INITIAL_X;
 
   // Compute global max velocity
-  MPI_Reduce(&local_max_v, &global_max_v, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&local_max_v, &global_max_v, 1, MPI_LONG_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
   // Check clock time
 #if CLOCK
+  MPI_Barrier(MPI_COMM_WORLD);
   if (my_rank == 0) {
     clock_gettime(CLOCK_MONOTONIC, &now);
     fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
     finteg = fnow;
-    cout << "Integration time: " << (finteg - ffile) << endl;
+    cout << "Integration time: " << (finteg - finit) << endl;
   }
 #endif
   
@@ -284,6 +218,7 @@ main(int argc, char* argv[]) {
 
   // Check clock time
 #if CLOCK
+  MPI_Barrier(MPI_COMM_WORLD);
   if (my_rank == 0) {
     clock_gettime(CLOCK_MONOTONIC, &now);
     fnow = (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
