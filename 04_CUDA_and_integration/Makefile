@@ -24,4 +24,3 @@ integrate: integrate.cpp default_profile.o
 default_profile.o: ${HFILE}
 	cp ${HFILE} default_profile.h
 	${CXX} ${CXX_FLAGS} default_profile.h -o default_profile.o
-
