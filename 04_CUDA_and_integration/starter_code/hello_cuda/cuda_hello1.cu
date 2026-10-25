@@ -48,6 +48,20 @@ int main(int argc, char* argv[]) {
        th_per_blk = strtol(argv[2], NULL, 10);  /* Get number of threads per block from command line */
    }
 
+   cudaDeviceProp prop;
+   cudaGetDeviceProperties(&prop, 0); // device 0
+   printf("%s, CC %d.%d\n", prop.name, prop.major, prop.minor);
+   printf("maxThreadsPerBlock: %d\n", prop.maxThreadsPerBlock);
+   printf("maxThreadsDim: %d x %d x %d\n",
+          prop.maxThreadsDim[0],
+          prop.maxThreadsDim[1],
+          prop.maxThreadsDim[2]);
+   printf("maxGridSize: %d x %d x %d\n",
+          prop.maxGridSize[0],
+          prop.maxGridSize[1],
+          prop.maxGridSize[2]);
+   printf("multiProcessorCount: %d\n", prop.multiProcessorCount);
+
    Hello <<<blk_ct, th_per_blk>>>();
             /* Start blk_ct*th_per_blk threads on GPU, */
 
