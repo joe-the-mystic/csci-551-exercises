@@ -5,7 +5,7 @@
  * Compile:  nvcc -arch=sm_XX -o trap1 trap1.cu 
  *              XX >= 30 to allow unified memory use
  *              See note 4 below if you're saving the runtimes
- * Run:      ./trap1 <n> <a> <b> <blk_ct> <th_per_blk>
+ * Run:      ./trap1 <n> <a> <b>
  *              n is the number of trapezoids
  *              a is the left endpoint
  *              b is the right endpoint
@@ -39,6 +39,8 @@
 #else
 #include "save_stats.h"
 #endif
+
+#define TH_PER_BLK 256
 
 /*-------------------------------------------------------------------
  * Function:    f
@@ -85,10 +87,9 @@ __global__ void Dev_trap(
  * Host code 
  */
 void  Get_args(const int argc, char* argv[], int* n_p, 
-      float* a_p, float* b_p,
-      int* blk_ct, int* th_per_blk_p);
+      float* a_p, float* b_p);
 void  Trap_wrapper(const float a, const float b, const int n, 
-      float* trap_p, const int blk_ct, const int th_per_blk);
+      float* trap_p);
 float Serial_trap(const float a, const float b, const int n);
 void  Update_stats(double start, double finish, 
       double* min_p, double* max_p, double* total_p);
@@ -105,7 +106,7 @@ int main(int argc, char* argv[]) {
    cudaError_t err;
 
 
-   Get_args(argc, argv, &n, &a, &b, &blk_ct, &th_per_blk);
+   Get_args(argc, argv, &n, &a, &b);
    err = cudaMallocManaged(&trap_p, sizeof(float));
    if (err != cudaSuccess) {
       fprintf(stderr, "cudaMallocManaged error = %s\n", 
@@ -113,6 +114,7 @@ int main(int argc, char* argv[]) {
       fprintf(stderr, "Quitting\n");
       exit(-1);
    }
+   int blk_ct = (n + th_per_blk - 1) / th_per_blk;
 
    for (int iter = 0; iter < ITERS; iter++) {
       GET_TIME(start);
@@ -155,10 +157,9 @@ int main(int argc, char* argv[]) {
  *            and quit.
  */
 void Get_args(const int argc, char* argv[], int* n_p, 
-      float* a_p, float* b_p, 
-      int* blk_ct_p, int* th_per_blk_p) {
+      float* a_p, float* b_p) {
 
-   if (argc != 6) {
+   if (argc != 4) {
       fprintf(stderr, "usage: %s <n> <a> <b> <blk_ct> <th_per_blk>\n", 
             argv[0]);
       exit(0);
@@ -166,12 +167,6 @@ void Get_args(const int argc, char* argv[], int* n_p,
    *n_p = strtol(argv[1], NULL, 10);
    *a_p = strtod(argv[2], NULL);
    *b_p = strtod(argv[3], NULL);
-   *blk_ct_p = strtol(argv[4], NULL, 10);
-   *th_per_blk_p = strtol(argv[5], NULL, 10);
-   if (*n_p > (*blk_ct_p)*(*th_per_blk_p)) {
-      fprintf(stderr, "Number of threads must be >= n\n");
-      exit(0);
-   }
 }  /* Get_args */
 
 
@@ -182,13 +177,14 @@ void Get_args(const int argc, char* argv[], int* n_p,
  *            device
  */
 void Trap_wrapper(const float a, const float b, const int n, 
-     float* trap_p,
-     const int blk_ct, const int th_per_blk) {
+     float* trap_p) {
+
+   int blk_ct = (n + TH_PER_BLK - 1) / TH_PER_BLK;
 
    /* Invoke kernel */
    *trap_p = 0.5*(f(a) + f(b));
    float h = (b-a)/n;
-   Dev_trap<<<blk_ct, th_per_blk>>>(a, b, h, n, trap_p);
+   Dev_trap<<<blk_ct, TH_PER_BLK>>>(a, b, h, n, trap_p);
    cudaDeviceSynchronize();
    *trap_p = h*(*trap_p);
 
