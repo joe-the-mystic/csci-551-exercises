@@ -98,7 +98,7 @@ void  Update_stats(double start, double finish,
  * main
  */
 int main(int argc, char* argv[]) {
-   int n, blk_ct, th_per_blk;
+   int n, blk_ct;
    float a, b, *trap_p, trap;
    double start, finish;  /* Only used on host */
    double dmin = 1.0e6, dmax = 0.0, dtotal = 0.0;
@@ -114,11 +114,11 @@ int main(int argc, char* argv[]) {
       fprintf(stderr, "Quitting\n");
       exit(-1);
    }
-   int blk_ct = (n + th_per_blk - 1) / th_per_blk;
+   blk_ct = (n + TH_PER_BLK - 1) / TH_PER_BLK;
 
    for (int iter = 0; iter < ITERS; iter++) {
       GET_TIME(start);
-      Trap_wrapper(a, b, n, trap_p, blk_ct, th_per_blk);
+      Trap_wrapper(a, b, n, trap_p);
       GET_TIME(finish);
 
 //    printf("Elapsed time for cuda = %e seconds\n", finish-start);
@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
          hmin, hmax, htotal/ITERS);
 
 #  ifdef SAVE_STATS
-   Save_stats(argv[0], n, blk_ct, th_per_blk);
+   Save_stats(argv[0], n, blk_ct, TH_PER_BLK);
 #  endif
 
    cudaFree(trap_p);
@@ -160,7 +160,7 @@ void Get_args(const int argc, char* argv[], int* n_p,
       float* a_p, float* b_p) {
 
    if (argc != 4) {
-      fprintf(stderr, "usage: %s <n> <a> <b> <blk_ct> <th_per_blk>\n", 
+      fprintf(stderr, "usage: %s <n> <a> <b>\n", 
             argv[0]);
       exit(0);
    }
