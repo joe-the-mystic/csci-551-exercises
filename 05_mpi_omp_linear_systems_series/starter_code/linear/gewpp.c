@@ -86,7 +86,7 @@
 
 #define ICHAR 80  // Length of array holding description of the problem
 #define IDEBUG 0  // Flag to enable printing of intermediate results of decomposition =1 yes, =0 no.
-#define TRACE 0 
+#define TRACE 0
 
 // Function Prototypes
 void  matrix_print (int nr, int nc, double **A);
